@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AppCraft - Payment Customization & Encryption</title>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+    <style>
+        body { font-family: 'Tajawal', sans-serif; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        /* Toggle Switch */
+        .toggle { appearance: none; width: 36px; height: 20px; background: #cbd5e1; border-radius: 20px; position: relative; cursor: pointer; transition: 0.3s; }
+        .toggle:checked { background: #2563eb; }
+        .toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background: white; border-radius: 50%; transition: 0.3s; }
+        html[dir="rtl"] .toggle::after { right: 2px; left: auto; }
+        html[dir="rtl"] .toggle:checked::after { transform: translateX(-16px); }
+
+        /* Modal Styles */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 100;
+        }
+        .modal-content {
+            background: white; padding: 24px; border-radius: 16px; width: 90%; max-width: 600px; max-height: 80vh; overflow-y: auto;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Dragging Styles */
+        .dragging-flow { opacity: 0.5; border: 2px dashed #2563eb; }
+        
+        /* Resize Handles */
+        .resize-handle { position: absolute; background-color: #2563eb; border: 1px solid white; z-index: 50; }
+        .resize-r { top: 50%; right: -6px; width: 8px; height: 20px; cursor: col-resize; transform: translateY(-50%); border-radius: 4px; }
+        .resize-b { bottom: -6px; left: 50%; width: 20px; height: 8px; cursor: row-resize; transform: translateX(-50%); border-radius: 4px; }
+        .resize-br { bottom: -6px; right: -6px; width: 12px; height: 12px; cursor: nwse-resize; border-radius: 50%; }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+        import React, { useState, useEffect, useRef } from 'https://esm.sh/react@18.2.0';
+        import { createRoot } from 'https://esm.sh/react-dom@18.2.0/client';
+        
+        import { 
+            Smartphone, Type, Image as ImageIcon, Square, MousePointer2, 
+            Download, Code, Eye, Trash2, LayoutTemplate, Save, Undo, 
+            Palette, AlignLeft, AlignCenter, AlignRight, PlusCircle, 
+            Settings, Layers, Map, Home, User, Search, Bell, Menu, 
+            Lock, UserPlus, FileJson, Database, X, GripVertical, Move, Grid, Layout, Navigation, Edit, FileCode,
+            Star, Heart, ShoppingCart, CreditCard, Mail, Phone, MapPin, Check, AlertCircle, Info, ChevronRight, Camera
+        } from 'https://esm.sh/lucide-react@0.292.0?deps=react@18.2.0';
+
+        const Button = ({ children, onClick, variant = 'primary', className = '', icon: Icon, disabled = false }) => {
+            const baseStyle = "flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-200 transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed";
+            const variants = {
+                primary: "bg-blue-600 text-white hover:bg-blue-700 shadow-md hover:shadow-lg",
+                secondary: "bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 hover:border-gray-300",
+                danger: "bg-red-50 text-red-600 hover:bg-red-100",
+                ghost: "text-gray-600 hover:bg-gray-100",
+                success: "bg-green-600 text-white hover:bg-green-700 shadow-md",
+                dark: "bg-gray-800 text-white hover:bg-gray-900 shadow-md"
+            };
+            return <button onClick={onClick} disabled={disabled} className={`${baseStyle} ${variants[variant]} ${className}`}>{Icon && <Icon size={18} />}{children}</button>;
+        };
+
+        const NAV_ICONS = { Home, User, Search, Bell, Menu, Settings, Map, Layers };
+        const APP_ICONS = { Star, Heart, ShoppingCart, CreditCard, Mail, Phone, MapPin, Check, AlertCircle, Info, ChevronRight, Camera, User, Home };
+
+        const ELEMENT_TYPES = {
+            HEADER: { id: 'header', label: 'عنوان رئيسي', icon: Type, defaultProps: { tag: 'h1', text: 'عنوان جديد', style: { color: '#1f2937', fontSize: '24px', textAlign: 'center', padding: '10px', width: '100%', height: 'auto' } } },
+            PARAGRAPH: { id: 'paragraph', label: 'نص فقرة', icon: AlignLeft, defaultProps: { tag: 'p', text: 'نص فقرة جديد.', style: { color: '#4b5563', fontSize: '16px', textAlign: 'right', padding: '10px', width: '100%', height: 'auto' } } },
+            BUTTON: { id: 'button', label: 'زر إجراء', icon: MousePointer2, defaultProps: { tag: 'button', text: 'اضغط هنا', action: 'alert', actionValue: 'مرحباً!', redirectPageId: '', style: { backgroundColor: '#2563eb', color: '#ffffff', padding: '12px 24px', borderRadius: '8px', border: 'none', fontSize: '16px', width: '100%', height: 'auto', cursor: 'pointer' } } },
+            IMAGE: { id: 'image', label: 'صورة', icon: ImageIcon, defaultProps: { tag: 'img', src: 'https://placehold.co/600x400/e2e8f0/1e293b?text=Image', alt: 'Placeholder', style: { width: '100%', height: '200px', borderRadius: '8px', objectFit: 'cover' } } },
+            CONTAINER: { id: 'container', label: 'حاوية', icon: Square, defaultProps: { tag: 'div', style: { backgroundColor: '#ffffff', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb', minHeight: '100px', width: '100%', height: 'auto' } } },
+            INPUT: { id: 'input', label: 'حقل إدخال', icon: LayoutTemplate, defaultProps: { tag: 'input', inputType: 'text', name: 'field_1', placeholder: 'اكتب هنا...', style: { width: '100%', height: '45px', padding: '12px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '16px', marginTop: '5px', marginBottom: '5px' } } },
+            CUSTOM_HTML: { id: 'custom_html', label: 'كود HTML', icon: FileCode, defaultProps: { html: '<div style="padding:15px; background:#e0f2fe; border:1px dashed #0284c7; color:#0369a1; text-align:center; border-radius:8px;">كود مخصص</div>', style: { width: '100%', height: 'auto' } } },
+            ICON: { id: 'icon', label: 'أيقونة', icon: Star, defaultProps: { iconName: 'Star', size: 32, color: '#2563eb', style: { width: 'auto', height: 'auto' } } },
+            PAYMENT: { id: 'payment', label: 'دفع إلكتروني', icon: CreditCard, defaultProps: { price: '99', currency: 'SAR', cardNameLabel: 'الاسم على البطاقة', cardNumberLabel: 'رقم البطاقة', expiryLabel: 'MM/YY', cvvLabel: 'CVV', encryptedFields: ['card_number', 'cvv'], style: { width: '100%', height: 'auto', padding: '15px', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' } } }
+        };
+
+        function AppBuilder() {
+            const [project, setProject] = useState({
+                pages: [{ id: 'home', name: 'الرئيسية', type: 'custom', layout: 'flow', elements: [] }],
+                activePageId: 'home',
+                bottomNav: { show: false, items: [] },
+                settings: { title: 'تطبيقي', bgColor: '#f3f4f6', fontFamily: 'Tajawal, sans-serif', backendType: 'html' }
+            });
+
+            const [selectedId, setSelectedId] = useState(null);
+            const [previewMode, setPreviewMode] = useState(false);
+            
+            // Interaction States
+            const [resizing, setResizing] = useState(null);
+            const [positionDragging, setPositionDragging] = useState(null);
+            const dragItem = useRef(null); 
+
+            // Modal States
+            const [showPageTemplates, setShowPageTemplates] = useState(false);
+            const [showRenameModal, setShowRenameModal] = useState(false);
+            const [showCodeModal, setShowCodeModal] = useState(false);
+            const [pageIdToRename, setPageIdToRename] = useState(null);
+            const [tempPageName, setTempPageName] = useState('');
+            const [pageCode, setPageCode] = useState('');
+
+            useEffect(() => {
+                const saved = localStorage.getItem('smartAppBuilder_v8_secure');
+                if (saved) {
+                    try { 
+                        const parsed = JSON.parse(saved);
+                        if (!parsed.bottomNav) parsed.bottomNav = { show: false, items: [] };
+                        setProject(prev => ({ ...prev, ...parsed })); 
+                    } catch (e) { console.error(e); }
+                }
+            }, []);
+
+            useEffect(() => { localStorage.setItem('smartAppBuilder_v8_secure', JSON.stringify(project)); }, [project]);
+
+            const getCurrentPage = () => project.pages.find(p => p.id === project.activePageId);
+            
+            const updateCurrentPageElements = (newElements) => {
+                setProject(prev => ({
+                    ...prev,
+                    pages: prev.pages.map(p => p.id === prev.activePageId ? { ...p, elements: newElements } : p)
+                }));
+            };
+
+            // --- Logic ---
+            const toggleBottomNav = () => { setProject(p => ({ ...p, bottomNav: { ...p.bottomNav, show: !p.bottomNav.show } })); };
+            const addBottomNavItem = () => {
+                if (project.bottomNav.items.length >= 5) return alert("الحد الأقصى 5 عناصر");
+                const newItem = { id: `nav_${Date.now()}`, label: 'صفحة', icon: 'Home', targetPageId: project.pages[0].id };
+                setProject(p => ({ ...p, bottomNav: { ...p.bottomNav, items: [...p.bottomNav.items, newItem] } }));
+            };
+            const updateBottomNavItem = (id, key, val) => {
+                setProject(p => ({
+                    ...p,
+                    bottomNav: { ...p.bottomNav, items: p.bottomNav.items.map(i => i.id === id ? { ...i, [key]: val } : i) }
+                }));
+            };
+            const removeBottomNavItem = (id) => { setProject(p => ({ ...p, bottomNav: { ...p.bottomNav, items: p.bottomNav.items.filter(i => i.id !== id) } })); };
+
+            const updatePageLayout = (layoutMode) => {
+                const currentPage = getCurrentPage();
+                let updatedElements = currentPage.elements;
+                if (layoutMode === 'free') {
+                    updatedElements = currentPage.elements.map((el, idx) => ({
+                        ...el,
+                        props: { ...el.props, style: { ...el.props.style, position: 'absolute', top: el.props.style.top || `${idx * 60 + 10}px`, left: el.props.style.left || '10px', width: el.props.style.width === '100%' ? '300px' : el.props.style.width } }
+                    }));
+                } else {
+                    updatedElements = currentPage.elements.map(el => {
+                        const newStyle = { ...el.props.style };
+                        delete newStyle.position; delete newStyle.top; delete newStyle.left; newStyle.width = '100%';
+                        return { ...el, props: { ...el.props, style: newStyle } };
+                    });
+                }
+                setProject(prev => ({ ...prev, pages: prev.pages.map(p => p.id === prev.activePageId ? { ...p, layout: layoutMode, elements: updatedElements } : p) }));
+            };
+
+            const addElement = (typeKey) => {
+                const template = ELEMENT_TYPES[typeKey];
+                const currentPage = getCurrentPage();
+                const isFree = currentPage.layout === 'free';
+                
+                const newElement = {
+                    id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+                    type: typeKey,
+                    props: JSON.parse(JSON.stringify(template.defaultProps))
+                };
+
+                if (isFree) {
+                    newElement.props.style.position = 'absolute';
+                    newElement.props.style.top = '50px';
+                    newElement.props.style.left = '50px';
+                    newElement.props.style.width = '200px';
+                }
+
+                updateCurrentPageElements([...currentPage.elements, newElement]);
+                setSelectedId(newElement.id);
+            };
+
+            const updateElement = (id, newProps) => {
+                const currentElements = getCurrentPage().elements;
+                updateCurrentPageElements(currentElements.map(el => el.id === id ? { ...el, props: { ...el.props, ...newProps } } : el));
+            };
+
+            const updateStyle = (id, key, value) => {
+                const el = getCurrentPage().elements.find(e => e.id === id);
+                if (!el) return;
+                const newStyle = { ...el.props.style, [key]: value };
+                updateElement(id, { style: newStyle });
+            };
+
+            const deleteElement = (id) => {
+                const currentElements = getCurrentPage().elements;
+                updateCurrentPageElements(currentElements.filter(el => el.id !== id));
+                if (selectedId === id) setSelectedId(null);
+            };
+
+            // --- Mouse Handlers ---
+            useEffect(() => {
+                const handleMouseMove = (e) => {
+                    if (resizing) {
+                        const deltaX = e.clientX - resizing.startX;
+                        const deltaY = e.clientY - resizing.startY;
+                        const el = getCurrentPage().elements.find(e => e.id === resizing.id);
+                        if (!el) return;
+                        let newWidth = resizing.startWidth;
+                        let newHeight = resizing.startHeight;
+                        if (resizing.direction.includes('r')) newWidth = Math.max(30, resizing.startWidth + deltaX);
+                        if (resizing.direction.includes('b')) newHeight = Math.max(20, resizing.startHeight + deltaY);
+                        const newStyle = { ...el.props.style };
+                        if (resizing.direction.includes('r')) newStyle.width = `${newWidth}px`;
+                        if (resizing.direction.includes('b')) newStyle.height = `${newHeight}px`;
+                        updateElement(resizing.id, { style: newStyle });
+                    }
+                    else if (positionDragging) {
+                        const deltaX = e.clientX - positionDragging.startX;
+                        const deltaY = e.clientY - positionDragging.startY;
+                        const el = getCurrentPage().elements.find(e => e.id === positionDragging.id);
+                        if (!el) return;
+                        const newLeft = positionDragging.startLeft + deltaX;
+                        const newTop = positionDragging.startTop + deltaY;
+                        updateElement(positionDragging.id, { style: { ...el.props.style, left: `${newLeft}px`, top: `${newTop}px` } });
+                    }
+                };
+                const handleMouseUp = () => {
+                    if (resizing) { setResizing(null); document.body.style.cursor = 'default'; }
+                    if (positionDragging) { setPositionDragging(null); }
+                };
+                if (resizing || positionDragging) {
+                    window.addEventListener('mousemove', handleMouseMove);
+                    window.addEventListener('mouseup', handleMouseUp);
+                }
+                return () => {
+                    window.removeEventListener('mousemove', handleMouseMove);
+                    window.removeEventListener('mouseup', handleMouseUp);
+                };
+            }, [resizing, positionDragging, project]);
+
+            const handleMouseDownElement = (e, el) => {
+                if (previewMode) return;
+                e.stopPropagation();
+                setSelectedId(el.id);
+                if (getCurrentPage().layout === 'free') {
+                    const styleTop = parseInt(el.props.style.top) || 0;
+                    const styleLeft = parseInt(el.props.style.left) || 0;
+                    setPositionDragging({ id: el.id, startX: e.clientX, startY: e.clientY, startTop: styleTop, startLeft: styleLeft });
+                }
+            };
+
+            const handleFlowDragStart = (e, index) => {
+                if (getCurrentPage().layout === 'free') return;
+                dragItem.current = index;
+                e.target.closest('.draggable-item').classList.add('dragging-flow');
+            };
+            const handleFlowDragEnter = (e, index) => {
+                if (getCurrentPage().layout === 'free') return;
+                const list = [...getCurrentPage().elements];
+                const dragItemContent = list[dragItem.current];
+                if (dragItem.current !== null && dragItem.current !== index) {
+                    list.splice(dragItem.current, 1);
+                    list.splice(index, 0, dragItemContent);
+                    updateCurrentPageElements(list);
+                    dragItem.current = index;
+                }
+            };
+            const handleFlowDragEnd = (e) => {
+                dragItem.current = null;
+                document.querySelectorAll('.dragging-flow').forEach(d => d.classList.remove('dragging-flow'));
+            };
+
+            const handleResizeStart = (e, id, direction) => {
+                e.stopPropagation();
+                e.preventDefault();
+                const el = document.getElementById(`element-${id}`);
+                const rect = el.getBoundingClientRect();
+                setResizing({ id, direction, startX: e.clientX, startY: e.clientY, startWidth: rect.width, startHeight: rect.height });
+            };
+
+            const addPage = () => {
+                const id = `page_${Date.now()}`;
+                setProject(p => ({ ...p, pages: [...p.pages, { id, name: 'صفحة جديدة', layout: 'flow', elements: [] }], activePageId: id }));
+            };
+            
+            const renamePage = (id, newName) => {
+                if (!newName) return;
+                setProject(p => ({ ...p, pages: p.pages.map(page => page.id === id ? { ...page, name: newName } : page) }));
+            };
+
+            const deletePage = (id) => {
+                if (project.pages.length <= 1) return;
+                const newPages = project.pages.filter(p => p.id !== id);
+                setProject(p => ({ ...p, pages: newPages, activePageId: newPages[0].id }));
+            };
+
+            const handleExport = async () => {
+                if (project.settings.backendType === 'php') await exportPHP();
+                else exportHTML();
+            };
+
+            // --- Generators ---
+            const EXPORT_ICONS_SVG = {
+                Home: '<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>',
+                User: '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+                Search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+                Bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
+                Menu: '<line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/>',
+                Settings: '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
+                ShoppingCart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
+                CreditCard: '<rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/>',
+                Star: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
+                Heart: '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>',
+                Check: '<polyline points="20 6 9 17 4 12"/>',
+                X: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'
+            };
+
+            const generateBottomNavHTML = () => {
+                if (!project.bottomNav.show) return '';
+                const itemsHtml = project.bottomNav.items.map(item => `
+                    <div class="nav-item" onclick="navigateTo('${item.targetPageId}')">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${EXPORT_ICONS_SVG[item.icon] || EXPORT_ICONS_SVG.Home}</svg>
+                        <span>${item.label}</span>
+                    </div>
+                `).join('');
+                return `<div class="bottom-nav">${itemsHtml}</div>`;
+            };
+
+            const generateElementHTML = (el) => {
+                 const styleStr = Object.entries(el.props.style).map(([k, v]) => `${k.replace(/([A-Z])/g, '-$1').toLowerCase()}:${v}`).join(';');
+                 const { tag, text, src, placeholder, inputType, name, action, actionValue, html, iconName, size, color, redirectPageId, cardNameLabel, cardNumberLabel, expiryLabel, cvvLabel } = el.props;
+                 
+                 if (el.type === 'CUSTOM_HTML') return `<div style="${styleStr}" class="element">${html}</div>`;
+                 
+                 if (el.type === 'ICON') {
+                     const svgPath = EXPORT_ICONS_SVG[iconName] || EXPORT_ICONS_SVG.Star;
+                     return `<div style="${styleStr}" class="element"><svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${svgPath}</svg></div>`;
+                 }
+
+                 if (el.type === 'PAYMENT') {
+                     return `
+                     <div style="${styleStr}" class="element payment-form">
+                        <h3 style="margin-top:0; font-size:16px; margin-bottom:10px;">بيانات الدفع</h3>
+                        <label style="font-size:12px; display:block; margin-bottom:2px;">${cardNameLabel || 'الاسم على البطاقة'}</label>
+                        <input type="text" name="card_name" placeholder="${cardNameLabel || 'الاسم على البطاقة'}" style="width:100%; padding:8px; margin-bottom:8px; border:1px solid #ddd; border-radius:4px;">
+                        
+                        <label style="font-size:12px; display:block; margin-bottom:2px;">${cardNumberLabel || 'رقم البطاقة'}</label>
+                        <input type="text" name="card_number" placeholder="${cardNumberLabel || 'رقم البطاقة'}" style="width:100%; padding:8px; margin-bottom:8px; border:1px solid #ddd; border-radius:4px;">
+                        
+                        <div style="display:flex; gap:10px;">
+                            <div style="width:50%">
+                                <label style="font-size:12px; display:block; margin-bottom:2px;">${expiryLabel || 'MM/YY'}</label>
+                                <input type="text" name="expiry" placeholder="${expiryLabel || 'MM/YY'}" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
+                            </div>
+                            <div style="width:50%">
+                                <label style="font-size:12px; display:block; margin-bottom:2px;">${cvvLabel || 'CVV'}</label>
+                                <input type="text" name="cvv" placeholder="${cvvLabel || 'CVV'}" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
+                            </div>
+                        </div>
+                     </div>`;
+                 }
+
+                 if (tag === 'img') return `<img src="${src}" style="${styleStr}" class="element">`;
+                 if (tag === 'input') return `<input type="${inputType||'text'}" name="${name||''}" placeholder="${placeholder}" style="${styleStr}" class="element">`;
+                 if (tag === 'button') {
+                     if (action === 'navigate') return `<a href="${actionValue}.${project.settings.backendType==='php'?'php':'html'}"><button style="${styleStr}">${text}</button></a>`;
+                     if (action === 'submit') return `<button type="submit" style="${styleStr}" class="element">${text}</button>`; // Form submit handled by page wrapper
+                     return `<button style="${styleStr}" onclick="alert('${actionValue}')">${text}</button>`;
+                 }
+                 return `<${tag} style="${styleStr}">${text}</${tag}>`;
+            };
+
+            const commonCss = `
+                body{margin:0;padding:0;font-family:sans-serif;background:${project.settings.bgColor};}
+                #root, .container {max-width:480px;margin:0 auto;background:#fff;min-height:100vh;position:relative;overflow:hidden; padding-bottom: 70px;}
+                .element { box-sizing: border-box; }
+                .bottom-nav { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 480px; height: 60px; background: #fff; border-top: 1px solid #eee; display: flex; justify-content: space-around; align-items: center; z-index: 1000; box-shadow: 0 -2px 5px rgba(0,0,0,0.05); }
+                .nav-item { display: flex; flex-direction: column; align-items: center; font-size: 10px; color: #666; cursor: pointer; }
+                .nav-item svg { width: 20px; height: 20px; margin-bottom: 2px; }
+                .nav-item:hover { color: #2563eb; }
+            `;
+
+            const getFullPageCode = () => {
+                const currentPage = getCurrentPage();
+                const elementsHTML = currentPage.elements.map(generateElementHTML).join('\n');
+                const bottomNav = generateBottomNavHTML();
+                return `<!-- ${currentPage.name} -->
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head><meta charset="UTF-8"><style>${commonCss}</style></head>
+<body><div class="container">${elementsHTML}${bottomNav}</div></body></html>`;
+            };
+
+            const exportHTML = () => {
+                const pagesHTML = project.pages.map((page, idx) => {
+                    const elements = page.elements.map(generateElementHTML).join('\n');
+                    const pageStyle = page.layout === 'free' ? 'position: relative; height: 100vh;' : '';
+                    return `<div id="${page.id}" class="app-page" style="display:${idx===0?'block':'none'}; ${pageStyle}">${elements}</div>`;
+                }).join('');
+                const html = `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>${project.settings.title}</title><style>${commonCss}</style><script>function navigateTo(id){document.querySelectorAll('.app-page').forEach(p=>p.style.display='none');document.getElementById(id).style.display='block';}<\/script></head><body><div id="root">${pagesHTML}${generateBottomNavHTML()}</div></body></html>`;
+                saveAs(new Blob([html], {type:'text/html'}), 'app.html');
+            };
+
+            const exportPHP = async () => {
+                const zip = new JSZip();
+                const bottomNavHtml = generateBottomNavHTML();
+                
+                zip.file("db_connect.php", `<?php
+$servername = "localhost";
+$username = "root";
+$password = "";
+$dbname = "my_app_db";
+// $conn = new mysqli($servername, $username, $password, $dbname);
+// if ($conn->connect_error) { die("Connection failed: " . $conn->connect_error); }
+?>`);
+
+                project.pages.forEach(page => {
+                    const elements = page.elements.map(generateElementHTML).join('\n');
+                    
+                    const submitBtn = page.elements.find(el => el.type === 'BUTTON' && el.props.action === 'submit');
+                    const paymentEl = page.elements.find(el => el.type === 'PAYMENT');
+                    let phpHeader = `<?php include 'db_connect.php'; ?>`;
+                    
+                    if (submitBtn) {
+                        let redirectCode = '';
+                        if (submitBtn.props.redirectPageId) {
+                            const targetPage = project.pages.find(p => p.id === submitBtn.props.redirectPageId);
+                            if (targetPage) {
+                                redirectCode = `header("Location: ${targetPage.id}.php"); exit();`;
+                            }
+                        }
+                        
+                        if (paymentEl) {
+                            const encryptedFields = paymentEl.props.encryptedFields || [];
+                            const encryptionLogic = encryptedFields.map(f => `
+                                // Encrypt ${f}
+                                $${f} = encrypt_data($_POST['${f}']);`).join('\n');
+
+                            phpHeader = `<?php
+                            // Helper to simulate encryption
+                            function encrypt_data($data) { return base64_encode($data); } 
+
+                            if ($_SERVER["REQUEST_METHOD"] == "POST") {
+                                ${encryptionLogic}
+                                // Simulate Payment Processing with encrypted data
+                                // ...
+                                echo "<script>alert('تمت عملية الدفع بنجاح!');<\\/script>";
+                                ${redirectCode}
+                            }
+                            ?>`;
+                        } else {
+                            phpHeader = `<?php
+                            if ($_SERVER["REQUEST_METHOD"] == "POST") {
+                                // Generic data handling
+                                ${redirectCode}
+                            }
+                            ?>`;
+                        }
+                    }
+
+                    const content = `${phpHeader}
+<html><head><style>${commonCss}</style></head><body>
+<div class="container">
+<form method="POST">
+${elements}
+</form>
+${bottomNavHtml}
+</div>
+<script>function navigateTo(id) { window.location.href = id + '.php'; }<\/script>
+</body></html>`;
+                    zip.file(`${page.id}.php`, content);
+                });
+                saveAs(await zip.generateAsync({type:"blob"}), 'app.zip');
+            };
+
+            const createPageFromTemplate = (templateType) => {
+                const newPageId = `page_${Date.now()}`;
+                let newPageName = 'صفحة جديدة';
+                let initialElements = [];
+
+                if (templateType === 'blank') {
+                    newPageName = 'صفحة جديدة';
+                } else if (templateType === 'login') {
+                    newPageName = 'تسجيل الدخول';
+                    const header = { ...ELEMENT_TYPES.HEADER, props: { ...ELEMENT_TYPES.HEADER.defaultProps, text: 'تسجيل الدخول' } };
+                    const email = { ...ELEMENT_TYPES.INPUT, props: { ...ELEMENT_TYPES.INPUT.defaultProps, inputType: 'email', name: 'email', placeholder: 'البريد الإلكتروني' } };
+                    const pass = { ...ELEMENT_TYPES.INPUT, props: { ...ELEMENT_TYPES.INPUT.defaultProps, inputType: 'password', name: 'password', placeholder: 'كلمة المرور' } };
+                    const btn = { ...ELEMENT_TYPES.BUTTON, props: { ...ELEMENT_TYPES.BUTTON.defaultProps, text: 'دخول', action: 'submit', style: { ...ELEMENT_TYPES.BUTTON.defaultProps.style, marginTop: '20px' } } };
+                    [header, email, pass, btn].forEach(el => el.id = Math.random().toString(36).substr(2, 9));
+                    initialElements = [header, email, pass, btn];
+
+                } else if (templateType === 'register') {
+                    newPageName = 'إنشاء حساب';
+                    const header = { ...ELEMENT_TYPES.HEADER, props: { ...ELEMENT_TYPES.HEADER.defaultProps, text: 'حساب جديد' } };
+                    const user = { ...ELEMENT_TYPES.INPUT, props: { ...ELEMENT_TYPES.INPUT.defaultProps, name: 'username', placeholder: 'اسم المستخدم' } };
+                    const email = { ...ELEMENT_TYPES.INPUT, props: { ...ELEMENT_TYPES.INPUT.defaultProps, inputType: 'email', name: 'email', placeholder: 'البريد الإلكتروني' } };
+                    const pass = { ...ELEMENT_TYPES.INPUT, props: { ...ELEMENT_TYPES.INPUT.defaultProps, inputType: 'password', name: 'password', placeholder: 'كلمة المرور' } };
+                    const btn = { ...ELEMENT_TYPES.BUTTON, props: { ...ELEMENT_TYPES.BUTTON.defaultProps, text: 'تسجيل', action: 'submit', style: { ...ELEMENT_TYPES.BUTTON.defaultProps.style, marginTop: '20px', backgroundColor: '#10b981' } } };
+                     [header, user, email, pass, btn].forEach(el => el.id = Math.random().toString(36).substr(2, 9));
+                    initialElements = [header, user, email, pass, btn];
+                }
+
+                const newPage = { id: newPageId, name: newPageName, type: templateType, elements: initialElements };
+                setProject(prev => ({ ...prev, pages: [...prev.pages, newPage], activePageId: newPageId }));
+                setShowPageTemplates(false);
+            };
+
+            return (
+                <div className="flex h-screen bg-gray-100 text-gray-800 font-sans" dir="rtl">
+                    {/* Sidebar */}
+                    <div className="w-80 bg-white border-l border-gray-200 flex flex-col shadow-lg z-20">
+                         <div className="p-4 border-b bg-blue-50">
+                            <h1 className="text-xl font-bold text-blue-800 flex items-center gap-2"><Smartphone size={20}/> AppCraft</h1>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-6">
+                            
+                            {/* Page Manager */}
+                            <div className="bg-gray-50 p-3 rounded-xl border">
+                                <div className="flex justify-between items-center mb-2">
+                                    <span className="text-xs font-bold text-gray-500">الصفحات</span>
+                                    <button onClick={() => setShowPageTemplates(true)} className="text-blue-600"><PlusCircle size={16}/></button>
+                                </div>
+                                {project.pages.map(p => (
+                                    <div key={p.id} onClick={() => { setProject(pr=>({...pr, activePageId: p.id})); setSelectedId(null); }}
+                                         className={`flex justify-between p-2 rounded cursor-pointer ${project.activePageId === p.id ? 'bg-white border text-blue-600 shadow-sm' : 'hover:bg-gray-200'}`}>
+                                        <span className="text-sm truncate max-w-[120px]">{p.name}</span>
+                                        <div className="flex gap-1">
+                                            <button onClick={(e)=>{ e.stopPropagation(); setPageIdToRename(p.id); setTempPageName(p.name); setShowRenameModal(true); }} className="text-gray-400 hover:text-blue-500"><Edit size={14}/></button>
+                                            <button onClick={(e)=>{e.stopPropagation(); deletePage(p.id)}} className="text-red-400 hover:text-red-600"><Trash2 size={14}/></button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Elements */}
+                            <div className="grid grid-cols-2 gap-2">
+                                {Object.entries(ELEMENT_TYPES).map(([k, t]) => (
+                                    <button key={k} onClick={() => addElement(k)} className="p-3 bg-gray-50 border rounded hover:border-blue-500 hover:bg-blue-50 flex flex-col items-center group">
+                                        <t.icon className="w-6 h-6 text-gray-400 mb-1 group-hover:text-blue-600"/>
+                                        <span className="text-xs group-hover:text-blue-600">{t.label}</span>
+                                    </button>
+                                ))}
+                            </div>
+
+                             {/* Layout Toggle */}
+                             <div className="border-t pt-4">
+                                <h2 className="text-xs font-bold text-gray-400 mb-2">تخطيط الصفحة</h2>
+                                <div className="flex bg-gray-100 p-1 rounded-lg">
+                                    <button onClick={() => updatePageLayout('flow')} className={`flex-1 py-1.5 text-xs rounded ${getCurrentPage().layout === 'flow' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}>
+                                        <div className="flex items-center justify-center gap-1"><Layout size={14}/> قائمة</div>
+                                    </button>
+                                    <button onClick={() => updatePageLayout('free')} className={`flex-1 py-1.5 text-xs rounded ${getCurrentPage().layout === 'free' ? 'bg-white shadow text-purple-600' : 'text-gray-500'}`}>
+                                        <div className="flex items-center justify-center gap-1"><Move size={14}/> حر (Free)</div>
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Bottom Nav Settings */}
+                            <div className="border-t pt-4">
+                                <div className="flex justify-between items-center mb-2">
+                                    <h2 className="text-xs font-bold text-gray-400 flex items-center gap-1"><Navigation size={14}/> الشريط السفلي</h2>
+                                    <input type="checkbox" checked={project.bottomNav.show} onChange={toggleBottomNav} className="toggle" />
+                                </div>
+                                {project.bottomNav.show && (
+                                    <div className="space-y-2">
+                                        {project.bottomNav.items.map((item, idx) => (
+                                            <div key={item.id} className="bg-gray-50 p-2 rounded border text-xs">
+                                                <div className="flex justify-between mb-1">
+                                                    <span className="font-bold text-gray-500">زر #{idx + 1}</span>
+                                                    <button onClick={() => removeBottomNavItem(item.id)} className="text-red-400"><Trash2 size={12}/></button>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-1 mb-1">
+                                                    <input value={item.label} onChange={e => updateBottomNavItem(item.id, 'label', e.target.value)} className="border p-1 rounded" placeholder="الاسم" />
+                                                    <select value={item.icon} onChange={e => updateBottomNavItem(item.id, 'icon', e.target.value)} className="border p-1 rounded">
+                                                        {Object.keys(NAV_ICONS).map(k => <option key={k} value={k}>{k}</option>)}
+                                                    </select>
+                                                </div>
+                                                <select value={item.targetPageId} onChange={e => updateBottomNavItem(item.id, 'targetPageId', e.target.value)} className="w-full border p-1 rounded">
+                                                    {project.pages.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                                </select>
+                                            </div>
+                                        ))}
+                                        <button onClick={addBottomNavItem} className="w-full py-1 bg-blue-50 text-blue-600 rounded text-xs border border-blue-200 hover:bg-blue-100">+ إضافة زر</button>
+                                    </div>
+                                )}
+                            </div>
+
+                        </div>
+                    </div>
+
+                    {/* Canvas */}
+                    <div className="flex-1 bg-gray-100 flex flex-col relative">
+                        <div className="h-14 bg-white border-b px-6 flex justify-between items-center shadow-sm z-10">
+                            <span className="text-sm font-bold text-gray-500">
+                                {getCurrentPage().name} <span className="text-[10px] bg-gray-100 px-2 rounded ml-2">{getCurrentPage().layout === 'free' ? 'تخطيط حر' : 'قائمة'}</span>
+                            </span>
+                            <div className="flex gap-2">
+                                <Button variant="dark" onClick={() => { setPageCode(getFullPageCode()); setShowCodeModal(true); }} icon={Code}>كود</Button>
+                                <Button variant="secondary" onClick={() => setPreviewMode(!previewMode)} icon={Eye}>{previewMode ? 'تصميم' : 'معاينة'}</Button>
+                                <Button onClick={handleExport} icon={Download}>تصدير</Button>
+                            </div>
+                        </div>
+
+                        <div className="flex-1 overflow-auto p-8 flex justify-center">
+                            <div className={`transition-all duration-300 ${previewMode ? 'scale-100' : 'scale-95'}`}>
+                                <div className="w-[375px] bg-white rounded-[3rem] shadow-2xl border-[8px] border-gray-800 overflow-hidden relative" style={{ height: '750px' }}>
+                                    <div className="absolute top-0 inset-x-0 h-6 bg-gray-800 rounded-b-xl w-40 mx-auto z-30"></div>
+                                    
+                                    {/* App Content */}
+                                    <div className="h-full overflow-y-auto no-scrollbar relative" 
+                                         style={{ 
+                                             backgroundColor: project.settings.bgColor, 
+                                             paddingTop: '30px',
+                                             paddingBottom: project.bottomNav.show ? '70px' : '0', 
+                                             position: 'relative' 
+                                         }}>
+                                        
+                                        {getCurrentPage().elements.length === 0 && (
+                                            <div className="flex flex-col items-center justify-center h-40 text-gray-400 mt-20 border-2 border-dashed mx-4 rounded-xl">
+                                                <p className="text-sm">الصفحة فارغة</p>
+                                            </div>
+                                        )}
+
+                                        {getCurrentPage().elements.map((el, index) => (
+                                            <div 
+                                                key={el.id} 
+                                                id={`element-${el.id}`}
+                                                className={`draggable-item relative group ${selectedId === el.id ? 'ring-2 ring-blue-500 z-20' : ''}`}
+                                                style={{
+                                                    ...el.props.style,
+                                                    marginBottom: getCurrentPage().layout === 'flow' ? '10px' : 0,
+                                                    cursor: getCurrentPage().layout === 'free' && !previewMode ? 'move' : 'default'
+                                                }}
+                                                draggable={getCurrentPage().layout === 'flow' && !previewMode}
+                                                onDragStart={(e) => handleFlowDragStart(e, index)}
+                                                onDragEnter={(e) => handleFlowDragEnter(e, index)}
+                                                onDragEnd={handleFlowDragEnd}
+                                                onDragOver={e => e.preventDefault()}
+                                                onMouseDown={(e) => handleMouseDownElement(e, el)}
+                                                onClick={(e) => e.stopPropagation()}
+                                            >
+                                                {/* Render Actual Element */}
+                                                <div className="pointer-events-none w-full h-full">
+                                                    {el.type === 'CUSTOM_HTML' ? (
+                                                        <div dangerouslySetInnerHTML={{ __html: el.props.html }} style={{...el.props.style, position: 'static'}} />
+                                                    ) : el.type === 'ICON' ? (
+                                                        <div style={{...el.props.style, position: 'static', color: el.props.color}}>
+                                                            {(() => {
+                                                                const IconComp = APP_ICONS[el.props.iconName] || Star;
+                                                                return <IconComp size={el.props.size} />;
+                                                            })()}
+                                                        </div>
+                                                    ) : el.type === 'PAYMENT' ? (
+                                                        <div style={{...el.props.style, position: 'static'}} className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                                                            <div className="flex items-center gap-2 mb-4 text-gray-600 border-b pb-2">
+                                                                <CreditCard size={20}/>
+                                                                <span className="font-bold text-sm">دفع إلكتروني</span>
+                                                            </div>
+                                                            <div className="space-y-2">
+                                                                <div className="h-8 bg-white border rounded w-full"></div>
+                                                                <div className="flex gap-2">
+                                                                    <div className="h-8 bg-white border rounded w-1/2"></div>
+                                                                    <div className="h-8 bg-white border rounded w-1/2"></div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <>
+                                                            {el.type === 'HEADER' && <h1 style={{...el.props.style, position: 'static', width: '100%', height: '100%'}}>{el.props.text}</h1>}
+                                                            {el.type === 'PARAGRAPH' && <p style={{...el.props.style, position: 'static', width: '100%', height: '100%'}}>{el.props.text}</p>}
+                                                            {el.type === 'BUTTON' && <button style={{...el.props.style, position: 'static', width: '100%', height: '100%'}}>{el.props.text}</button>}
+                                                            {el.type === 'IMAGE' && <img src={el.props.src} style={{...el.props.style, position: 'static', width: '100%', height: '100%'}} />}
+                                                            {el.type === 'INPUT' && <input placeholder={el.props.placeholder} style={{...el.props.style, position: 'static', width: '100%', height: '100%'}} disabled />}
+                                                            {el.type === 'CONTAINER' && <div style={{...el.props.style, position: 'static', width: '100%', height: '100%'}}></div>}
+                                                        </>
+                                                    )}
+                                                </div>
+
+                                                {selectedId === el.id && !previewMode && (
+                                                    <>
+                                                        <div className="resize-handle resize-r" onMouseDown={(e) => handleResizeStart(e, el.id, 'r')}></div>
+                                                        <div className="resize-handle resize-b" onMouseDown={(e) => handleResizeStart(e, el.id, 'b')}></div>
+                                                        <div className="resize-handle resize-br" onMouseDown={(e) => handleResizeStart(e, el.id, 'rb')}></div>
+                                                        <button onClick={(e) => { e.stopPropagation(); deleteElement(el.id); }} className="absolute -top-3 -right-3 bg-red-500 text-white rounded-full p-1 shadow-md hover:bg-red-600 z-50"><X size={12} /></button>
+                                                    </>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {/* Bottom Nav Preview */}
+                                    {project.bottomNav.show && (
+                                        <div className="absolute bottom-0 inset-x-0 h-[60px] bg-white border-t flex justify-around items-center z-40">
+                                            {project.bottomNav.items.map(item => {
+                                                const Icon = NAV_ICONS[item.icon] || Home;
+                                                const isActive = project.activePageId === item.targetPageId;
+                                                return (
+                                                    <div key={item.id} onClick={() => setProject(p => ({...p, activePageId: item.targetPageId}))} className={`flex flex-col items-center justify-center cursor-pointer ${isActive ? 'text-blue-600' : 'text-gray-500'}`}>
+                                                        <Icon size={20} />
+                                                        <span className="text-[10px]">{item.label}</span>
+                                                    </div>
+                                                )
+                                            })}
+                                        </div>
+                                    )}
+
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    {/* Properties Sidebar */}
+                    {selectedId && (
+                        <div className="w-72 bg-white border-r p-4 shadow-lg z-20">
+                            <h3 className="font-bold text-gray-700 border-b pb-2 mb-4">الخصائص</h3>
+                            {(() => {
+                                const el = getCurrentPage().elements.find(e => e.id === selectedId);
+                                if (!el) return null;
+                                return (
+                                    <div className="space-y-4">
+                                        
+                                        {el.type === 'CUSTOM_HTML' && (
+                                            <div><label className="text-xs font-bold block mb-1 text-blue-600">محرر الأكواد</label><textarea value={el.props.html} onChange={e => updateElement(el.id, { html: e.target.value })} className="w-full border p-2 rounded text-xs font-mono h-40 bg-gray-50 text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none dir-ltr" placeholder="<div>Hello</div>"/></div>
+                                        )}
+
+                                        {el.type === 'ICON' && (
+                                            <>
+                                                <div><label className="text-xs">الأيقونة</label>
+                                                    <select value={el.props.iconName} onChange={e => updateElement(el.id, { iconName: e.target.value })} className="w-full border p-1 rounded">
+                                                        {Object.keys(APP_ICONS).map(k => <option key={k} value={k}>{k}</option>)}
+                                                    </select>
+                                                </div>
+                                                <div><label className="text-xs">الحجم</label><input type="range" min="16" max="64" value={el.props.size} onChange={e=>updateElement(el.id, {size: parseInt(e.target.value)})} className="w-full"/></div>
+                                                <div><label className="text-xs">اللون</label><input type="color" value={el.props.color} onChange={e=>updateElement(el.id, {color: e.target.value})} className="w-full h-8"/></div>
+                                            </>
+                                        )}
+
+                                        {el.type === 'PAYMENT' && (
+                                            <>
+                                                <div><label className="text-xs font-bold text-gray-500 mb-1 block">تسميات الحقول</label>
+                                                    <input type="text" value={el.props.cardNameLabel} onChange={e => updateElement(el.id, { cardNameLabel: e.target.value })} className="w-full border p-1 rounded text-xs mb-1" placeholder="تسمية الاسم"/>
+                                                    <input type="text" value={el.props.cardNumberLabel} onChange={e => updateElement(el.id, { cardNumberLabel: e.target.value })} className="w-full border p-1 rounded text-xs mb-1" placeholder="تسمية الرقم"/>
+                                                    <div className="flex gap-1">
+                                                        <input type="text" value={el.props.expiryLabel} onChange={e => updateElement(el.id, { expiryLabel: e.target.value })} className="w-full border p-1 rounded text-xs" placeholder="تسمية التاريخ"/>
+                                                        <input type="text" value={el.props.cvvLabel} onChange={e => updateElement(el.id, { cvvLabel: e.target.value })} className="w-full border p-1 rounded text-xs" placeholder="تسمية CVV"/>
+                                                    </div>
+                                                </div>
+                                                <div className="mt-2">
+                                                    <label className="text-xs font-bold text-gray-500 mb-1 block">التشفير (Backend)</label>
+                                                    <div className="flex flex-col gap-1 text-xs">
+                                                        {['card_number', 'cvv', 'card_name', 'expiry'].map(field => (
+                                                            <label key={field} className="flex items-center gap-2 cursor-pointer">
+                                                                <input 
+                                                                    type="checkbox" 
+                                                                    checked={el.props.encryptedFields?.includes(field)} 
+                                                                    onChange={e => {
+                                                                        const current = el.props.encryptedFields || [];
+                                                                        const next = e.target.checked ? [...current, field] : current.filter(f => f !== field);
+                                                                        updateElement(el.id, { encryptedFields: next });
+                                                                    }} 
+                                                                />
+                                                                <span>{field === 'card_number' ? 'رقم البطاقة' : field === 'cvv' ? 'CVV' : field === 'card_name' ? 'الاسم' : 'التاريخ'}</span>
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </>
+                                        )}
+
+                                        {el.type !== 'CUSTOM_HTML' && el.type !== 'ICON' && el.type !== 'PAYMENT' && (
+                                            <div><label className="text-xs">النص</label><input type="text" value={el.props.text||''} onChange={e=>updateElement(el.id, {text:e.target.value})} className="w-full border p-1 rounded"/></div>
+                                        )}
+
+                                        {el.type === 'BUTTON' && el.props.action === 'submit' && (
+                                            <div className="bg-green-50 p-2 rounded border border-green-200">
+                                                <label className="text-xs font-bold text-green-700 block mb-1">بعد الإرسال اذهب إلى:</label>
+                                                <select value={el.props.redirectPageId} onChange={e => updateElement(el.id, { redirectPageId: e.target.value })} className="w-full border p-1 rounded text-xs">
+                                                    <option value="">-- البقاء في الصفحة --</option>
+                                                    {project.pages.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                                </select>
+                                            </div>
+                                        )}
+
+                                        {el.type === 'BUTTON' && (
+                                            <div>
+                                                <label className="text-xs block mb-1">الإجراء</label>
+                                                <select value={el.props.action} onChange={(e) => updateElement(el.id, { action: e.target.value })} className="w-full border rounded px-2 py-1 text-sm">
+                                                    <option value="alert">رسالة تنبيه</option>
+                                                    <option value="navigate">انتقال لصفحة</option>
+                                                    <option value="submit">إرسال (نموذج/دفع)</option>
+                                                </select>
+                                            </div>
+                                        )}
+
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div><label className="text-xs">العرض</label><input type="text" value={el.props.style.width} onChange={e=>updateStyle(el.id, 'width', e.target.value)} className="w-full border p-1 rounded text-xs dir-ltr"/></div>
+                                            <div><label className="text-xs">الارتفاع</label><input type="text" value={el.props.style.height} onChange={e=>updateStyle(el.id, 'height', e.target.value)} className="w-full border p-1 rounded text-xs dir-ltr"/></div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div><label className="text-xs">X (Left)</label><input type="text" value={el.props.style.left||'auto'} onChange={e=>updateStyle(el.id, 'left', e.target.value)} disabled={getCurrentPage().layout!=='free'} className="w-full border p-1 rounded text-xs dir-ltr bg-gray-50"/></div>
+                                            <div><label className="text-xs">Y (Top)</label><input type="text" value={el.props.style.top||'auto'} onChange={e=>updateStyle(el.id, 'top', e.target.value)} disabled={getCurrentPage().layout!=='free'} className="w-full border p-1 rounded text-xs dir-ltr bg-gray-50"/></div>
+                                        </div>
+                                        {el.type !== 'ICON' && (
+                                            <>
+                                                <div><label className="text-xs">الخلفية</label><input type="color" value={el.props.style.backgroundColor||'#ffffff'} onChange={e=>updateStyle(el.id, 'backgroundColor', e.target.value)} className="w-full h-8"/></div>
+                                                <div><label className="text-xs">لون النص</label><input type="color" value={el.props.style.color||'#000000'} onChange={e=>updateStyle(el.id, 'color', e.target.value)} className="w-full h-8"/></div>
+                                            </>
+                                        )}
+                                    </div>
+                                );
+                            })()}
+                        </div>
+                    )}
+
+                    {/* Template Modal */}
+                    {showPageTemplates && (
+                        <div className="modal-overlay" onClick={() => setShowPageTemplates(false)}>
+                            <div className="modal-content" onClick={e => e.stopPropagation()}>
+                                <div className="flex justify-between items-center mb-4 border-b pb-2">
+                                    <h3 className="text-lg font-bold">إضافة صفحة جديدة</h3>
+                                    <button onClick={() => setShowPageTemplates(false)}><X size={20}/></button>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <button onClick={() => createPageFromTemplate('blank')} className="p-4 border rounded-xl hover:bg-blue-50 hover:border-blue-500 text-center flex flex-col items-center"><FileJson size={32} className="text-gray-400 mb-2"/><span className="font-bold text-sm">صفحة فارغة</span></button>
+                                    <button onClick={() => createPageFromTemplate('login')} className="p-4 border rounded-xl hover:bg-orange-50 hover:border-orange-500 text-center flex flex-col items-center"><Lock size={32} className="text-orange-500 mb-2"/><span className="font-bold text-sm">تسجيل الدخول</span></button>
+                                    <button onClick={() => createPageFromTemplate('register')} className="p-4 border rounded-xl hover:bg-green-50 hover:border-green-500 text-center flex flex-col items-center"><UserPlus size={32} className="text-green-500 mb-2"/><span className="font-bold text-sm">إنشاء حساب</span></button>
+                                    <button onClick={() => createPageFromTemplate('forgot')} className="p-4 border rounded-xl hover:bg-yellow-50 hover:border-yellow-500 text-center flex flex-col items-center"><Database size={32} className="text-yellow-500 mb-2"/><span className="font-bold text-sm">استعادة</span></button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Rename Page Modal */}
+                    {showRenameModal && (
+                        <div className="modal-overlay" onClick={() => setShowRenameModal(false)}>
+                            <div className="modal-content" onClick={e => e.stopPropagation()}>
+                                <div className="flex justify-between items-center mb-4 border-b pb-2"><h3 className="text-lg font-bold">تغيير اسم الصفحة</h3><button onClick={() => setShowRenameModal(false)}><X size={20}/></button></div>
+                                <div className="mb-4"><label className="block text-sm font-medium text-gray-700 mb-1">اسم الصفحة الجديد</label><input type="text" value={tempPageName} onChange={(e) => setTempPageName(e.target.value)} className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none" autoFocus/></div>
+                                <div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setShowRenameModal(false)}>إلغاء</Button><Button onClick={() => { renamePage(pageIdToRename, tempPageName); setShowRenameModal(false); }}>حفظ</Button></div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* View Code Modal */}
+                    {showCodeModal && (
+                        <div className="modal-overlay" onClick={() => setShowCodeModal(false)}>
+                            <div className="modal-content" onClick={e => e.stopPropagation()}>
+                                <div className="flex justify-between items-center mb-4 border-b pb-2"><h3 className="text-lg font-bold">كود الصفحة (HTML)</h3><button onClick={() => setShowCodeModal(false)}><X size={20}/></button></div>
+                                <div className="mb-4 relative"><textarea value={pageCode} readOnly className="w-full border p-2 rounded text-xs font-mono h-64 bg-gray-900 text-green-400 focus:outline-none dir-ltr"/></div>
+                                <div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setShowCodeModal(false)}>إغلاق</Button><Button onClick={() => { navigator.clipboard.writeText(pageCode); alert('تم نسخ الكود!'); }}>نسخ الكود</Button></div>
+                            </div>
+                        </div>
+                    )}
+
+                </div>
+            );
+        }
+
+        createRoot(document.getElementById('root')).render(<AppBuilder />);
+    </script>
+</body>
+</html>
